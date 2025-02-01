@@ -5,7 +5,6 @@ import pandas as pd
 import datetime
 import multiprocessing
 from multiprocessing import Pool, freeze_support
-freeze_support()
 
 
 data_sheet_name = "Daten"
@@ -114,6 +113,7 @@ def main():
 
 
 def run(excel_file, code_column_name):
+    #freeze_support()
     print(f"Ticket Tracker - Medimeisterschaften {datetime.datetime.now().year}")
     data_df, codes_df = load_data(excel_file, data_sheet_name, codes_sheet_name)
     assert not data_df.empty, "Data sheet not found"
@@ -122,10 +122,6 @@ def run(excel_file, code_column_name):
     save_data(excel_file, data_df, codes_df, data_sheet_name, codes_sheet_name)
 
     return len(data_df)
-
-        
-
-
 
 
 if __name__ == "__main__":

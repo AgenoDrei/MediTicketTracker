@@ -5,6 +5,7 @@ from tkinter import filedialog, messagebox, ttk
 import pandas as pd
 from PIL import Image, ImageTk
 from tracker import run
+from multiprocessing import Process, freeze_support
 
 
 class TicketTrackerApp:
@@ -101,6 +102,7 @@ class TicketTrackerApp:
 
 # Run the application
 if __name__ == "__main__":
+    freeze_support()
     root = tk.Tk()
     app = TicketTrackerApp(root)
     root.mainloop()
