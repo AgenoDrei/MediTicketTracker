@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import pandas as pd
 from PIL import Image, ImageTk
-from tracker import run
+from tracker import run, TrackerProcessor
 from multiprocessing import Process, freeze_support
 
 
@@ -16,6 +16,7 @@ class TicketTrackerApp:
         #self.root.geometry("500x450")
         #self.root.columnconfigure(0, weight=1) 
         self.root.resizable(False, False)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
 
         # Title Label
         self.title = tk.Label(root, text="Medimeisterschaften Ticket Tracker", font=("Arial", 18))
@@ -59,11 +60,17 @@ class TicketTrackerApp:
         self.file_label.grid(row=7, column=1, pady=5)
 
         # Process Button
-        self.process_button = tk.Button(root, text="Teste die MediCodes", bg="#265e5f", fg='white', command=self.process_file)
-        self.process_button.grid(row=8, column=0, columnspan=2, pady=10, padx=50, sticky="ew")
-
-        # Store file path
+        self.process_button = tk.Button(root, text="Teste die MediCodes", bg="#265e5f", fg='white', command=self.start_tracking)
+        self.process_button.grid(row=9, column=0, columnspan=2, pady=10, padx=50, sticky="ew")
+        self.progress_bar = ttk.Progressbar(root, orient="horizontal", length=400, mode="determinate", maximum=100)
+        self.progress_bar.grid(row=8, column=0, columnspan=2, pady=5, padx=50)
+        
+        # Initialize variables
         self.file_path = None
+        self.num_checked_codes = 0
+        self.num_codes = -1
+        self.processed_rows = []
+        self.new_entries = []
 
     def select_file(self):
         """Open file dialog to select an Excel file."""
@@ -72,33 +79,56 @@ class TicketTrackerApp:
             self.file_path = file_path
             self.file_label.config(text=f"File: {os.path.basename(file_path)}")
 
-    def process_file(self):
+    def start_tracking(self):
         """Process the selected Excel file based on the column name input."""
         if not self.file_path:
             messagebox.showerror("Error", "Wähle zuerst eine Excel-Datei aus!")
             return
-
         column_name = self.column_entry.get()
         if not column_name:
             messagebox.showerror("Error", "Gib bitte einen Spaltennamen ein.")
             return
-
+        df = pd.read_excel(self.file_path)
+        if column_name not in df.columns:
+            messagebox.showerror("Error", f"Spalte '{column_name}' existiert nicht in der Datei.")
+            return
+        self.num_codes = len(df[column_name])
+        
         try:
-            # Read Excel file and check if colum exists
-            df = pd.read_excel(self.file_path)
-            if column_name not in df.columns:
-                messagebox.showerror("Error", f"Spalte '{column_name}' existiert nicht in der Datei.")
-                return
-
             # Process the column (example: print its values)
-            num_results = run(self.file_path, column_name)
-            messagebox.showinfo("Success", f"{num_results} Ticketcodes erfolgreich geprüft!")
-
+            self.tracker = TrackerProcessor(self.file_path, column_name)
+            self.tracker.process_vouchers_parallel(gui_callback=self.on_tracking_complete)
+            #messagebox.showinfo("Success", f"{num_results} Ticketcodes erfolgreich geprüft!")
         except Exception as e:
             messagebox.showerror("Error", f"Fehler beim Verarbeiten der Medi-Codes: {e}")
-        finally:
-            print("Processing completed.")
-            sys.exit(0)
+
+    def on_tracking_complete(self, result):
+        self.num_checked_codes += 1
+        row, entry = result
+        self.processed_rows.append(row)
+        if entry:
+            self.new_entries.append(entry)
+        
+        step = (1.0 / self.num_codes * 100)
+        self.root.after(0, lambda: self.progress_bar.step(step))
+        
+        if self.num_checked_codes == self.num_codes:
+            messagebox.showinfo("Success", f"{self.num_codes} Ticketcodes erfolgreich geprüft!")
+            data_df = pd.DataFrame(self.processed_rows)
+            if self.new_entries:
+                new_codes_df = pd.DataFrame(self.new_entries)
+                self.tracker.codes_df = pd.concat([self.tracker.codes_df, new_codes_df], ignore_index=True)
+        
+            self.tracker.save_data(data_df, self.tracker.codes_df)
+            self._on_closing()
+
+    def _on_closing(self):
+        if hasattr(self, "tracker"):
+            self.tracker.pool.close()
+            self.tracker.pool.terminate()
+        self.root.destroy()
+        sys.exit(0)
+
 
 # Run the application
 if __name__ == "__main__":

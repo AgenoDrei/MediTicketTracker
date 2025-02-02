@@ -7,23 +7,76 @@ import multiprocessing
 from multiprocessing import Pool, freeze_support
 
 
-data_sheet_name = "Daten"
-codes_sheet_name = "Freie Codes"
-base_url = "https://ticket.medimeisterschaften.com/"
-exp_url = "https://ticket.medimeisterschaften.com/?voucher_invalid"
-code_col = 'Code'
+
+class TrackerProcessor():
+    def __init__(self, excel_file, code_column_name):
+        self.excel_file = excel_file
+        self.code_column_name = code_column_name
+        self.data_sheet_name = "Daten"
+        self.codes_sheet_name = "Freie Codes"
+        self.base_url = "https://ticket.medimeisterschaften.com/"
+        self.exp_url = "https://ticket.medimeisterschaften.com/?voucher_invalid"
+        self.code_col = 'Code'
+        self.num_threads = 8
+
+        data_df, codes_df = self._load_data()
+        self.data_df = data_df
+        self.codes_df = codes_df
+        
+
+    def _load_data(self):
+        """Load Excel sheets into Pandas DataFrames."""
+        data_df = pd.read_excel(self.excel_file, sheet_name=self.data_sheet_name)
+        codes_df = pd.DataFrame(columns=["ID", "Vorname", "Nachname", "Email", "Code", "Status"])  # Clear the codes sheet
+        
+        assert not data_df.empty, "Data sheet not found"
+        return data_df, codes_df
+
+    def process_vouchers_parallel(self, gui_callback):
+        """Process voucher codes in parallel using multiprocessing."""
+        self.pool = Pool(processes=self.num_threads)
+            
+        args = [(row, self.base_url, self.exp_url, self.code_col) for _, row in self.data_df.iterrows()]
+        
+        # results = pool.map(process_single_row, args)
+        for arg in args: 
+            self.pool.apply_async(process_single_row, args=arg, callback=gui_callback)
+        
 
 
-def load_data(file_path, data_sheet, codes_sheet):
-    """Load Excel sheets into Pandas DataFrames."""
-    data_df = pd.read_excel(file_path, sheet_name=data_sheet)
-    codes_df = pd.DataFrame(columns=["ID", "Vorname", "Nachname", "Email", "Code", "Status"])  # Clear the codes sheet
-    return data_df, codes_df
+    def save_data(self, data_df, codes_df):
+        """Save the updated data frames to the Excel file."""
+        with pd.ExcelWriter(self.excel_file, engine="xlsxwriter") as writer:
+            data_df.to_excel(writer, sheet_name=self.data_sheet_name, index=False)
+            codes_df.to_excel(writer, sheet_name=self.codes_sheet_name, index=False)
 
 
-def process_single_row(args):
+def main():
+    # Configurations
+    workbook_file = "Ticketcodes.xlsx"
+    workbook_file = os.path.join("./", workbook_file)
+    print(f"Ticket Tracker - Medimeisterschaften {datetime.datetime.now().year}")
+    tracker = TrackerProcessor(workbook_file, 'Code')
+
+    try:
+        data_df, codes_df = tracker.process_vouchers_parallel()
+        tracker.save_data(data_df, codes_df)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
+
+
+def run(excel_file, code_column_name, gui_callback):
+    print(f"Ticket Tracker - Medimeisterschaften {datetime.datetime.now().year}")
+    #data_df, codes_df = tracker.process_vouchers_parallel()
+    #tracker.save_data(data_df, codes_df
+    #return len(data_df)
+    tracker = TrackerProcessor(excel_file, code_column_name)
+    tracker.process_vouchers_parallel(gui_callback=gui_callback)
+
+
+def process_single_row(row, base_url, exp_url, code_col):
     """Process a single row with a new browser instance."""
-    row, base_url, exp_url = args
     browser = mechanicalsoup.StatefulBrowser()
     browser.open(base_url)
     browser.select_form('form[action="https://ticket.medimeisterschaften.com/redeem"]')
@@ -53,77 +106,8 @@ def process_single_row(args):
             "Code": ticket_code,
             "Status": "nicht eingelöst",
         }
-
-
-def process_vouchers_parallel(data_df, codes_df, base_url, exp_url):
-    """Process voucher codes in parallel using multiprocessing."""
-
-    with Pool(processes=multiprocessing.cpu_count()) as pool:
-        # Prepare arguments for processing
-        args = [(row, base_url, exp_url) for _, row in data_df.iterrows()]
-
-        # Process rows in parallel
-        results = pool.map(process_single_row, args)
-
-        processed_rows = []
-        new_entries = []
-
-        # Collect results
-        for row, entry in results:
-            processed_rows.append(row)
-            if entry:
-                new_entries.append(entry)
-
-        # Update dataframes
-        data_df = pd.DataFrame(processed_rows)
-        if new_entries:
-            new_codes_df = pd.DataFrame(new_entries)
-            codes_df = pd.concat([codes_df, new_codes_df], ignore_index=True)
-
-        return data_df, codes_df
-
-
-def save_data(file_path, data_df, codes_df, data_sheet, codes_sheet):
-    """Save the updated data frames to the Excel file."""
-    with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
-        data_df.to_excel(writer, sheet_name=data_sheet, index=False)
-        codes_df.to_excel(writer, sheet_name=codes_sheet, index=False)
-
-
-def main():
-    # Configurations
-    workbook_file = "Ticketcodes.xlsx"
-    cwd = os.path.dirname(os.path.abspath(__file__))
-    workbook_file = os.path.join("./", workbook_file)
-    #print(workbook_file)
-    print(f"Ticket Tracker - Medimeisterschaften {datetime.datetime.now().year}")
-
-    # Load data
-    data_df, codes_df = load_data(workbook_file, data_sheet_name, codes_sheet_name)
-    assert not data_df.empty, "Data sheet not found"
-
-    # Process voucher codes in parallel
-    try:
-        data_df, codes_df = process_vouchers_parallel(data_df, codes_df, base_url, exp_url)
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        sys.exit(1)
-    finally:
-        save_data(workbook_file, data_df, codes_df, data_sheet_name, codes_sheet_name)
-
-
-def run(excel_file, code_column_name):
-    #freeze_support()
-    print(f"Ticket Tracker - Medimeisterschaften {datetime.datetime.now().year}")
-    data_df, codes_df = load_data(excel_file, data_sheet_name, codes_sheet_name)
-    assert not data_df.empty, "Data sheet not found"
-
-    data_df, codes_df = process_vouchers_parallel(data_df, codes_df, base_url, exp_url)
-    save_data(excel_file, data_df, codes_df, data_sheet_name, codes_sheet_name)
-
-    return len(data_df)
-
+    
 
 if __name__ == "__main__":
-    freeze_support()
+    #freeze_support()
     main()
