@@ -13,7 +13,7 @@ The **Medimeisterschaften Ticket Tracker** is a Python-based desktop application
 
 1. Clone this repository:
    ```sh
-   git clone https://github.com/your-repo/medimeisterschaften-tracker.git
+   git clone https://github.com/AgenoDrei/MediTicketTracker.git
    cd medimeisterschaften-tracker
    ```
 2. Run the application: Click on the "tracker.exe" file to start the application
