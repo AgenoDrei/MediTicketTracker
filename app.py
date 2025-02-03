@@ -113,7 +113,7 @@ class TicketTrackerApp:
         self.root.after(0, lambda: self.progress_bar.step(step))
         
         if self.num_checked_codes == self.num_codes:
-            messagebox.showinfo("Success", f"{self.num_codes} Ticketcodes erfolgreich geprüft!")
+            messagebox.showinfo("Success", f"{self.num_codes} Ticketcodes erfolgreich geprüft! \n Du kannst den Status in der Excel-Datei überprüfen: {self.file_path}")
             data_df = pd.DataFrame(self.processed_rows)
             if self.new_entries:
                 new_codes_df = pd.DataFrame(self.new_entries)
